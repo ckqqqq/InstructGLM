@@ -5,12 +5,15 @@ from transformers import AutoTokenizer
 from cover_belle2jsonl import format_example
 from transformers import AutoModel
 
-torch.set_default_tensor_type(torch.cuda.HalfTensor)
-model = AutoModel.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True,
-                                                        device_map='auto')
-tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True)
+project_pth="/home/ckq/CHATGPT/niuren/InstructGLM"
+old_glm_path="/home/ckq/CHATGPT/0model_pretrained/chatglm_3_30"
 
-peft_path = "output/belle/chatglm-lora.pt"
+torch.set_default_tensor_type(torch.cuda.HalfTensor)
+model = AutoModel.from_pretrained(old_glm_path, trust_remote_code=True,
+                                                        device_map='auto')
+tokenizer = AutoTokenizer.from_pretrained(old_glm_path, trust_remote_code=True)
+
+peft_path = project_pth+"/output/belle/chatglm-lora.pt"
 
 peft_config = LoraConfig(
     task_type=TaskType.CAUSAL_LM, inference_mode=True,

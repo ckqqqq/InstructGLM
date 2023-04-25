@@ -56,31 +56,56 @@ model.to(device).train()
 
 total_step = 0
 effective_step = 0
+for epoch in range(NUM_EPOCHS):  # 遍历训练集指定的epoch次数
+    epoch_loss_local = 0  # 初始化每个epoch的本地损失
+    for step, batch in enumerate(t := tqdm.tqdm(train_dataloader)):  # 遍历训练数据集中的每个batch
+        outputs = model(**batch)  # 模型前向传播
+        loss_d = outputs.loss.detach()  # 计算当前batch的损失值，并将其从计算图中分离
+        epoch_loss_local += loss_d  # 累加每个batch的损失值
+        t.set_description(f"loss: {epoch_loss_local.cpu().float() / step}")  # 输出当前训练进度
+        loss = outputs.loss / accumulate_step  # 对梯度进行累积后，计算平均损失
+        accelerator.backward(loss)  # 反向传播计算梯度
+        if (step + 1) % accumulate_step == 0:  # 根据设定的梯度累积步长，进行梯度更新
+            optimizer.step()  # 更新优化器参数
+            lr_scheduler.step()  # 更新学习率
+            optimizer.zero_grad()  # 清空梯度
 
-for epoch in range(NUM_EPOCHS):
-    epoch_loss_local = 0
-    for step, batch in enumerate(t := tqdm.tqdm(train_dataloader)):
-        outputs = model(**batch)
-        loss_d = outputs.loss.detach()
-        epoch_loss_local += loss_d
-        t.set_description(f"loss: {epoch_loss_local.cpu().float() / step}")
-        loss = outputs.loss / accumulate_step
-        accelerator.backward(loss)
-        if (step + 1) % accumulate_step == 0:
-            optimizer.step()
-            lr_scheduler.step()
-            optimizer.zero_grad()
+    accelerator.wait_for_everyone()  # 等待所有进程完成当前epoch的训练,每次epoch跑完之前要等待一下
+    all_epoch_loss, all_step = accelerator.gather((epoch_loss_local, torch.tensor(step, device=device)))  # 收集所有进程的损失值和步数信息
 
-    accelerator.wait_for_everyone()
-    all_epoch_loss, all_step = accelerator.gather((epoch_loss_local, torch.tensor(step, device=device)))
+    if accelerator.is_main_process:  # 如果当前进程是主进程
+        model_id = f"finetune_{epoch}"  # 设置模型名称
+        accelerator.save(lora.lora_state_dict(accelerator.unwrap_model(model)), '/saved/' + model_id + '.pt')  # 保存模型
+        epoch_loss = all_epoch_loss.float().sum() / (all_step + 1).sum()  # 计算当前epoch的平均损失
+        total_step += (all_step + 1).sum()  # 累加总步数
+        effective_step += ((all_step + 1) // accumulate_step).sum()  # 累加有效步数
+        print(f'epoch: {epoch}, step {effective_step.cpu().numpy()}, training_loss: {epoch_loss.cpu().numpy()}')  # 输出当前epoch的训练结果
 
-    if accelerator.is_main_process:
-        model_id = f"finetune_{epoch}"
-        accelerator.save(lora.lora_state_dict(accelerator.unwrap_model(model)), '/saved/' + model_id + '.pt')
+    accelerator.wait_for_everyone()  # 等待所有进程完成当前epoch的训练并进行同步
 
-        epoch_loss = all_epoch_loss.float().sum() / (all_step + 1).sum()
-        total_step += (all_step + 1).sum()
-        effective_step += ((all_step + 1) // accumulate_step).sum()
-        print(f'epoch: {epoch}, step {effective_step.cpu().numpy()}, training_loss: {epoch_loss.cpu().numpy()}')
+# for epoch in range(NUM_EPOCHS):
+#     epoch_loss_local = 0
+#     for step, batch in enumerate(t := tqdm.tqdm(train_dataloader)):
+#         outputs = model(**batch)
+#         loss_d = outputs.loss.detach()#它计算了一个损失值（loss）并将其从计算图中分离（detach），这通常用于防止梯度计算
+#         epoch_loss_local += loss_d
+#         t.set_description(f"loss: {epoch_loss_local.cpu().float() / step}")
+#         loss = outputs.loss / accumulate_step # 除/梯度累积
+#         accelerator.backward(loss) # 前进
+#         if (step + 1) % accumulate_step == 0:# 和chatglm 的写法类似
+#             optimizer.step()
+#             lr_scheduler.step()
+#             optimizer.zero_grad()
 
-    accelerator.wait_for_everyone()
+#     accelerator.wait_for_everyone()
+#     all_epoch_loss, all_step = accelerator.gather((epoch_loss_local, torch.tensor(step, device=device)))
+
+#     if accelerator.is_main_process:
+#         model_id = f"finetune_{epoch}"
+#         accelerator.save(lora.lora_state_dict(accelerator.unwrap_model(model)), '/saved/' + model_id + '.pt')
+#         epoch_loss = all_epoch_loss.float().sum() / (all_step + 1).sum()
+#         total_step += (all_step + 1).sum()
+#         effective_step += ((all_step + 1) // accumulate_step).sum()
+#         print(f'epoch: {epoch}, step {effective_step.cpu().numpy()}, training_loss: {epoch_loss.cpu().numpy()}')
+
+#     accelerator.wait_for_everyone()

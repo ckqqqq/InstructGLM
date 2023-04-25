@@ -82,7 +82,7 @@ def get_lora_model(model, lora_config):
         target_modules=target_modules,
         lora_dropout=lora_config['lora_dropout'])
 
-    for key, module in model.named_modules():
+    for key, module in model.named_modules(): # 大佬写的太妙了
         if key.endswith('attention'):
             layer = int(key.split('.')[2])
             try:

@@ -50,7 +50,7 @@ kernels = Kernel(
     [
         "int4WeightCompression",
         "int4WeightExtractionFloat",
-        "int4WeightExtractionHalf",
+        "int4WeightExtractionHalf", 
         "int8WeightExtractionFloat",
         "int8WeightExtractionHalf",
     ],
